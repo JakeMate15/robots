@@ -76,7 +76,6 @@ void setup() {
 
   Serial.begin(9600);
   delay(300);
-  Serial.println(F("Robot 3 ultrasonicos listo"));
 }
 
 void loop() {  
