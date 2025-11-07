@@ -80,5 +80,11 @@ void setup() {
 }
 
 void loop() {  
+  float dC = distanciaCM(TRIG_CENTRO, ECHO_CENTRO);
+  float dL = distanciaCM(TRIG_IZQ, ECHO_IZQ);
+  float dR = distanciaCM(TRIG_DER, ECHO_DER);
 
+  Serial.print(F("L: ")); Serial.print(dL);
+  Serial.print(F("  C: ")); Serial.print(dC);
+  Serial.print(F("  R: ")); Serial.println(dR);
 }
