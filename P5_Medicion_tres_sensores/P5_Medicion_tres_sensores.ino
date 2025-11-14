@@ -34,10 +34,10 @@ void cerradoIzquierda(int vel)   { avanza(vel, vel, 0, 1); }
 void detenerse()                 { avanza(0, 0, 0, 0); }
 
 // === ULTRASÓNICOS (HC-SR04) ===
-#define TRIG_IZQ 8
-#define ECHO_IZQ 9
-#define TRIG_DER 10
-#define ECHO_DER 11
+#define TRIG_IZQ 7
+#define ECHO_IZQ 11
+#define TRIG_DER 9
+#define ECHO_DER 8
 #define TRIG_CENTRO 12
 #define ECHO_CENTRO 13
 #define VEL_SONIDO 0.035103f
@@ -50,7 +50,7 @@ float distanciaCM(int trig, int echo) {
   digitalWrite(trig, LOW);
   unsigned long dur = pulseIn(echo, HIGH);
   if (dur == 0) return NAN;
-  return (dur * VEL_SONIDO_CM_US) * 0.5f;
+  return (dur * VEL_SONIDO) * 0.5f;
 }
 
 void setup() {
@@ -83,7 +83,7 @@ void loop() {
   float dL = distanciaCM(TRIG_IZQ, ECHO_IZQ);
   float dR = distanciaCM(TRIG_DER, ECHO_DER);
 
-  Serial.print(F("L: ")); Serial.print(dL);
+  Serial.print(F("I: ")); Serial.print(dL);
   Serial.print(F("  C: ")); Serial.print(dC);
-  Serial.print(F("  R: ")); Serial.println(dR);
+  Serial.print(F("  D: ")); Serial.println(dR);
 }
