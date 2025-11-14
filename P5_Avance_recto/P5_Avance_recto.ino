@@ -7,6 +7,8 @@
 
 #define CERO 39              // PWM mínimo útil para vencer inercia
 
+#define SEGURIDAD 30
+
 const bool MOTOR_B_INVERTIDO = true;
 
 static inline int pwmConUmbral(int v) {
@@ -31,21 +33,20 @@ void avanza(int velA, int velB, int dirA, int dirB) {
 
 void delante(int vel)            { avanza(vel, vel, 1, 1); }
 void retroceder(int vel)         { avanza(vel, vel, 0, 0); }
-void abiertoDerecha(int vel)     { avanza(vel,   0, 1, 1); } // rueda izq avanza
-void abiertoIzquierda(int vel)   { avanza(0,   vel, 1, 1); } // rueda der avanza
-void cerradoDerecha(int vel)     { avanza(vel, vel, 1, 0); } // giro sobre eje
+void abiertoDerecha(int vel)     { avanza(vel,   0, 1, 1); }
+void abiertoIzquierda(int vel)   { avanza(0,   vel, 1, 1); }
+void cerradoDerecha(int vel)     { avanza(vel, vel, 1, 0); }
 void cerradoIzquierda(int vel)   { avanza(vel, vel, 0, 1); }
 void detenerse()                 { avanza(0, 0, 0, 0); }
 
-// === ULTRASÓNICOS (HC-SR04) ===
+// === ULTRASÓNICOS ===
 #define TRIG_IZQ 7
 #define ECHO_IZQ 11
 #define TRIG_DER 9
 #define ECHO_DER 8
 #define TRIG_CENTRO 12
-#define ECHO_CENTRO 13    // ideal: mover a otro pin si notas lecturas inestables
+#define ECHO_CENTRO 13
 
-// ~0.0172 cm/us (distancia ida y vuelta ya compensada)
 #define CM_POR_US 0.01723f
 
 float distanciaCM(int trig, int echo) {
@@ -55,18 +56,17 @@ float distanciaCM(int trig, int echo) {
   delayMicroseconds(10);
   digitalWrite(trig, LOW);
 
-  // timeout: 25ms ≈ ~4.3m; evita bloqueos
   unsigned long dur = pulseIn(echo, HIGH, 25000UL);
   if (dur == 0UL) return NAN;
   return dur * CM_POR_US;
 }
 
 float distanciaPared = 12.0f;
-const int   velocidad   = 110;
-const float K           = 3.0f;
-const float limErr      = 25.0f;
-const int   maxPWM      = 200;
-const float tolerancia  = 0.5f;
+const int velocidad = 110;
+const float K = 3.0f;
+const float limErr = 25.0f;
+const int maxPWM = 200;
+const float tolerancia = 0.5f;
 
 void setup() {
   // Motores
@@ -92,7 +92,6 @@ void setup() {
   Serial.begin(9600);
   delay(300);
 
-  // Intento de calibración inicial (si falla, usa 12 cm)
   float d = distanciaCM(TRIG_DER, ECHO_DER);
   distanciaPared = (isnan(d) || !isfinite(d)) ? 12.0f : d;
 }
@@ -101,13 +100,10 @@ void loop() {
   float dC   = distanciaCM(TRIG_CENTRO, ECHO_CENTRO);
   delay(10);
   float dDer = distanciaCM(TRIG_DER, ECHO_DER);
-  delay(10);
-  float dIz  = distanciaCM(TRIG_IZQ, ECHO_IZQ);
 
-  // Freno por obstáculo al frente si la lectura es válida
-  if (!isnan(dC) && isfinite(dC) && dC <= 15.0f) {
+  if (!isnan(dC) && isfinite(dC) && dC <= SEGURIDAD) {
+    
     detenerse();
-    Serial.println("Obstaculo al frente -> STOP");
     delay(30);
     return;
   }
@@ -115,39 +111,24 @@ void loop() {
   int vA = velocidad;
   int vB = velocidad;
 
-  // Control P usando pared derecha si la medida es válida
   if (!isnan(dDer) && isfinite(dDer)) {
     float error = dDer - distanciaPared;
 
-    if (fabsf(error) < tolerancia) error = 0.0f;
-    if (error >  limErr) error =  limErr;
-    if (error < -limErr) error = -limErr;
-
-    float u = K * error; // controlador P
-
-    vA = constrain((int)(velocidad + u), 0, maxPWM);
-    vB = constrain((int)(velocidad - u), 0, maxPWM);
-  }
-
-  // (Opcional) si también quieres usar la izquierda para centrarte, hazlo
-  // sólo si AMBAS lecturas son válidas. Descomenta y ajusta pesos.
-  /*
-  if (!isnan(dDer) && isfinite(dDer) && !isnan(dIz) && isfinite(dIz)) {
-    const float KR = 0.3f;
-    float uL = KR * (dIz - distanciaPared);
-    float uR = KR * (dDer - distanciaPared);
-    vA = constrain((int)(velocidad + uR - uL), 0, maxPWM);
-    vB = constrain((int)(velocidad - uR + uL), 0, maxPWM);
-  }
-  */  
+    if (fabsf(error) < tolerancia) {
+      error = 0.0f;
+    }
+    if (error != 0.0f) {
+      float error_saturado = constrain(error, -limErr, limErr);
+      float u = K * error_saturado;
+      if (error_saturado > 0.0f) {
+        vA = constrain((int)(velocidad + u), 0, maxPWM);
+      
+      } else { 
+        vB = constrain((int)(velocidad - u), 0, maxPWM);
+      }
+    }
+  } 
 
   avanza(vA, vB, 1, 1);
-
-  Serial.print("Frente: ");   Serial.print(dC);
-  Serial.print("  Der: ");    Serial.print(dDer);
-  Serial.print("  Izq: ");    Serial.print(dIz);
-  Serial.print("  vA: ");     Serial.print(vA);
-  Serial.print("  vB: ");     Serial.println(vB);
-
-  delay(30);
+  delay(1);
 }
