@@ -12,7 +12,7 @@
 const bool FORZAR_CALIBRACION = true; 
 
 double setpoint = 10.0; // OBJETIVO: 10 cm
-int velocidadBase = 120; // Velocidad de crucero (0-255)
+int velocidadBase = 50; // Velocidad de crucero (0-255)
 
 // ==========================================
 // === HARDWARE ===
@@ -91,54 +91,86 @@ float distanciaCM(int trig, int echo) {
 // === SETUP ===
 // ==========================================
 
+// --- CAMBIO EN SETUP ---
+
 void setup() {
+  Serial.begin(9600);
+
   // Configuración de Pines
   pinMode(DIR_A, OUTPUT); pinMode(PWM_A, OUTPUT);
   pinMode(DIR_B, OUTPUT); pinMode(PWM_B, OUTPUT);
   pinMode(TRIG_CENTRO, OUTPUT); pinMode(ECHO_CENTRO, INPUT);
   pinMode(TRIG_IZQ, OUTPUT); pinMode(ECHO_IZQ, INPUT);
   pinMode(TRIG_DER, OUTPUT); pinMode(ECHO_DER, INPUT);
-  
-  // LED integrado para avisos visuales
   pinMode(LED_BUILTIN, OUTPUT); 
 
-  // Inicializar Sensores
-  digitalWrite(TRIG_CENTRO, LOW); digitalWrite(TRIG_IZQ, LOW); digitalWrite(TRIG_DER, LOW);
+  digitalWrite(TRIG_CENTRO, LOW);
+  digitalWrite(TRIG_IZQ, LOW);
+  digitalWrite(TRIG_DER, LOW);
+  
+  delay(500); 
 
-  // --- LÓGICA DE MEMORIA ---
+  // --- MEDIR DISTANCIA INICIAL ---
+  Serial.println(F("Midiendo distancia inicial..."));
+  double sumaDistancias = 0;
+  int lecturasValidas = 0;
+  
+  for (int i = 0; i < 10; i++) {
+    float d = distanciaCM(TRIG_DER, ECHO_DER);
+    if (!isnan(d) && d > 2 && d < 100) { 
+       sumaDistancias += d;
+       lecturasValidas++;
+    }
+    delay(30);
+  }
+
+  if (lecturasValidas > 0) {
+    setpoint = sumaDistancias / lecturasValidas;
+  } else {
+    setpoint = 10.0; 
+  }
+
+  Serial.print(F("Setpoint fijado en: "));
+  Serial.println(setpoint);
+
+  // --- MEMORIA Y CALIBRACIÓN ---
   PID_Config datosGuardados;
   EEPROM.get(eeAddress, datosGuardados);
 
   if (FORZAR_CALIBRACION == false && datosGuardados.valido == true) {
-    // CASO 1: Usar datos guardados
+    // CARGAR DATOS
     kp = datosGuardados.p;
     ki = datosGuardados.i;
     kd = datosGuardados.d;
     tuning = false;
-    
-    // Parpadeo lento (3 veces) para indicar "DATOS CARGADOS OK"
     for(int i=0; i<3; i++) { digitalWrite(LED_BUILTIN, HIGH); delay(500); digitalWrite(LED_BUILTIN, LOW); delay(500); }
     
   } else {
-    // CASO 2: Calibrar (o no había datos)
+    // MODO CALIBRACIÓN - INTENTO "SUAVE Y PACIENTE"
     tuning = true;
+    input = setpoint; 
+
+    // === VALORES DE SEGURIDAD ===
     
-    // Configurar AutoTune
-    input = distanciaCM(TRIG_DER, ECHO_DER);
-    if(isnan(input)) input = setpoint; 
+    // 1. Toques muy suaves (evita el choque brusco)
+    aTune.SetOutputStep(12);     
     
-    aTune.SetOutputStep(40);
-    aTune.SetNoiseBand(2);
-    aTune.SetLookbackSec(0.05);
+    // 2. PACIENCIA: Analiza 0.5 seg antes de decidir (evita la oscilación creciente)
+    aTune.SetLookbackSec(0.5);   
     
-    // Parpadeo rápido (10 veces) para indicar "MODO APRENDIZAJE"
+    // 3. Tolerancia normal al ruido
+    aTune.SetNoiseBand(1);
+    
+    // 4. PID Completo
+    aTune.SetControlType(1);     
+    // ============================
+    
+    // Parpadeo RÁPIDO
     for(int i=0; i<10; i++) { digitalWrite(LED_BUILTIN, HIGH); delay(100); digitalWrite(LED_BUILTIN, LOW); delay(100); }
     
-    // Espera 3 seg para ponerlo en el suelo
     delay(3000);
   }
 
-  // Configurar PID final (ya sea con datos cargados o por defecto)
   myPID.SetMode(AUTOMATIC);
   myPID.SetOutputLimits(-255, 255);
   myPID.SetTunings(kp, ki, kd);

@@ -57,12 +57,14 @@ void setup() {
 }
 
 void loop() {  
-  for (int i = CERO; i < 255; i++) {
+  for (int i = 30; i < 70; i++) {
+    Serial.println(i);
     delante(i);
+    delay(200);
   }
   
   detenerse();
-  delay(1000);
+  while(true);
 
   for (int i = CERO; i < 255; i++) {
     retroceder(i);
